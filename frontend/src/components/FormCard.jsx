@@ -80,6 +80,7 @@ export default function FormCard({ form, onDelete, showActions = false, onTagCli
     <Link to={`/forms/${form.id}`}>
       <Card className="hover:border-border transition-colors cursor-pointer group">
         <CardContent className="p-4">
+          {form.submission_mode === 'legacy' && <p className="mb-3 text-sm font-medium text-amber-700 dark:text-amber-400">Legacy security — upgrade recommended</p>}
           <div className="flex items-start justify-between gap-2 mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="p-1.5 bg-muted rounded-lg flex-shrink-0">
@@ -104,7 +105,7 @@ export default function FormCard({ form, onDelete, showActions = false, onTagCli
                     <Copy className="mr-2 h-4 w-4" />
                     Copy Endpoint
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
+                  {form.hosted_enabled && ['public', 'legacy'].includes(form.submission_mode) && <DropdownMenuItem asChild>
                     <a
                       href={`${API_BASE_URL}/f/${form.endpoint}`}
                       target="_blank"
@@ -112,9 +113,9 @@ export default function FormCard({ form, onDelete, showActions = false, onTagCli
                       onClick={(e) => e.stopPropagation()}
                     >
                       <ExternalLink className="mr-2 h-4 w-4" />
-                      Open Endpoint
+                      Open hosted form
                     </a>
-                  </DropdownMenuItem>
+                  </DropdownMenuItem>}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={handleDeleteClick}

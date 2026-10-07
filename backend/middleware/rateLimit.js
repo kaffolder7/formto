@@ -1,11 +1,8 @@
 // In-memory rate limiting — no Redis required.
+import { requestIp } from '../utils/clientIp.js';
 
 export function getRequestIp(request) {
-  return (
-    request.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-    request.ip ||
-    '127.0.0.1'
-  );
+  return requestIp(request);
 }
 
 // ─── Generic in-memory rate limiter factory ───────────────────────────────────

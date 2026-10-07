@@ -258,6 +258,7 @@ function SubmissionRow({ submission, onArchive, onStatusChange, onRead }) {
               </div>
             )}
 
+            {submission.notification_status === 'suppressed_quota' && <p role="status" className="text-sm text-muted-foreground">Saved without notifications because this form reached its daily notification limit.</p>}
             {/* Metadata */}
             <div className="grid grid-cols-4 gap-3 text-sm pt-2 border-t">
               <span className="text-muted-foreground">IP Address</span>

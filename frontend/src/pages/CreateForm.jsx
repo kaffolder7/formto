@@ -87,6 +87,7 @@ export default function CreateForm() {
         name: formData.name,
         description: formData.description || null,
         endpoint,
+        active: false,
         redirect_url: formData.redirectUrl || null,
         notification_email: formData.notificationEmail || null,
       })
@@ -96,7 +97,7 @@ export default function CreateForm() {
         throw new Error("Failed to create form")
       }
 
-      navigate(`/forms/${newForm.id}`)
+      navigate(`/forms/${newForm.id}/settings`)
     } catch (err) {
       // Only log in development
       if (import.meta.env.DEV) {

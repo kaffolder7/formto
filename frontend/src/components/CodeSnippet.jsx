@@ -1,193 +1,103 @@
-import { useState } from "react"
-import { Copy, Check } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState } from "react";
+import { Copy, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { integrationSnippets } from "@/lib/formSnippets";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || window.location.origin
-
-const getHtmlSnippet = (endpoint) => `<form action="${BASE_URL}/f/${endpoint}" method="POST">
-  <input type="text" name="name" placeholder="Your name" required />
-  <input type="email" name="email" placeholder="Your email" required />
-  <textarea name="message" placeholder="Your message" required></textarea>
-  <button type="submit">Send</button>
-</form>`
-
-const getJsSnippet = (endpoint) => `const formData = {
-  name: "John Doe",
-  email: "john@example.com",
-  message: "Hello from JavaScript!"
-};
-
-fetch("${BASE_URL}/f/${endpoint}", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify(formData)
-})
-.then(response => response.json())
-.then(data => console.log("Success:", data))
-.catch(error => console.error("Error:", error));`
-
-const getReactSnippet = (endpoint) => `import { useState } from "react";
-
-function ContactForm() {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    message: ""
-  });
-  const [status, setStatus] = useState("");
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus("sending");
-
-    try {
-      const response = await fetch(
-        "${BASE_URL}/f/${endpoint}",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData)
-        }
-      );
-
-      if (response.ok) {
-        setStatus("success");
-        setFormData({ name: "", email: "", message: "" });
-      } else {
-        setStatus("error");
-      }
-    } catch (error) {
-      setStatus("error");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <input
-        type="text"
-        name="name"
-        value={formData.name}
-        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-        placeholder="Your name"
-        required
-      />
-      <input
-        type="email"
-        name="email"
-        value={formData.email}
-        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-        placeholder="Your email"
-        required
-      />
-      <textarea
-        name="message"
-        value={formData.message}
-        onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-        placeholder="Your message"
-        required
-      />
-      <button type="submit" disabled={status === "sending"}>
-        {status === "sending" ? "Sending..." : "Send"}
-      </button>
-      {status === "success" && <p>Message sent successfully!</p>}
-      {status === "error" && <p>Something went wrong. Please try again.</p>}
-    </form>
+export default function CodeSnippet({ form }) {
+  const [copied, setCopied] = useState("");
+  const [error, setError] = useState("");
+  const snippets = integrationSnippets(
+    form,
+    import.meta.env.VITE_API_BASE_URL || window.location.origin,
   );
-}`
-
-const getCurlSnippet = (endpoint) => `curl -X POST ${BASE_URL}/f/${endpoint} \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "name": "John Doe",
-    "email": "john@example.com",
-    "message": "Hello from cURL!"
-  }'`
-
-const getFileUploadSnippet = (endpoint) => `<form action="${BASE_URL}/f/${endpoint}"
-      method="POST"
-      enctype="multipart/form-data">
-  <input type="text" name="name" placeholder="Your name" required />
-  <input type="email" name="email" placeholder="Your email" required />
-  <textarea name="message" placeholder="Your message"></textarea>
-
-  <!-- Single file upload -->
-  <input type="file" name="attachment" accept=".pdf,.doc,.docx,.jpg,.png" />
-
-  <!-- Multiple files -->
-  <!-- <input type="file" name="files" multiple /> -->
-
-  <button type="submit">Send with attachment</button>
-</form>
-
-<!--
-  Supported file types: PDF, Word, Excel, images (JPG, PNG, GIF, WebP), ZIP, TXT, CSV
-  Max file size configured via MAX_FILE_SIZE_MB environment variable (default: 10MB)
--->`
-
-export default function CodeSnippet({ endpoint }) {
-  const [copied, setCopied] = useState(false)
-  const [activeTab, setActiveTab] = useState("html")
-
-  const snippets = {
-    html: getHtmlSnippet(endpoint),
-    javascript: getJsSnippet(endpoint),
-    react: getReactSnippet(endpoint),
-    curl: getCurlSnippet(endpoint),
-    fileupload: getFileUploadSnippet(endpoint),
+  async function copy(name, snippet) {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(name);
+      setError("");
+    } catch {
+      setError("Copy failed. Select the code and copy it manually.");
+    }
   }
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(snippets[activeTab])
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
+  if (form.submission_mode === "legacy")
+    return (
+      <Card className="border-amber-500">
+        <CardHeader>
+          <CardTitle>Legacy security — upgrade recommended</CardTitle>
+          <CardDescription>
+            This form still accepts submissions through its existing
+            integration. Open Form Settings to explicitly upgrade it before
+            using the new integration examples. Upgrading cannot be undone.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Integration Code</CardTitle>
+        <CardTitle>Connect your form</CardTitle>
         <CardDescription>
-          Copy and paste this code into your website to start collecting submissions
+          {form.submission_mode === "private"
+            ? "Run this integration on your server using its secret environment."
+            : "Register your website in Allowed websites and in your Cloudflare Turnstile widget. These examples include verification."}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex items-center justify-between mb-4">
-            <TabsList>
-              <TabsTrigger value="html">HTML</TabsTrigger>
-              <TabsTrigger value="javascript">JavaScript</TabsTrigger>
-              <TabsTrigger value="react">React</TabsTrigger>
-              <TabsTrigger value="curl">cURL</TabsTrigger>
-              <TabsTrigger value="fileupload">File Upload</TabsTrigger>
-            </TabsList>
-            <Button variant="outline" size="sm" onClick={handleCopy}>
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4 mr-2" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy
-                </>
-              )}
-            </Button>
-          </div>
-
-          {Object.entries(snippets).map(([key, code]) => (
-            <TabsContent key={key} value={key} className="mt-0">
-              <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto text-sm">
-                <code>{code}</code>
+      <CardContent className="space-y-4">
+        {form.security_issue && (
+          <p role="status" className="text-sm text-destructive">
+            Complete security setup before using these examples:{" "}
+            {form.security_issue}.
+          </p>
+        )}
+        <Tabs
+          key={form.submission_mode}
+          defaultValue={Object.keys(snippets)[0]}
+        >
+          <TabsList>
+            {Object.keys(snippets).map((name) => (
+              <TabsTrigger key={name} value={name}>
+                {name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {Object.entries(snippets).map(([name, snippet]) => (
+            <TabsContent key={name} value={name} className="space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => copy(name, snippet)}
+              >
+                {copied === name ? (
+                  <Check className="mr-2 h-4 w-4" />
+                ) : (
+                  <Copy className="mr-2 h-4 w-4" />
+                )}
+                {copied === name ? "Copied" : "Copy code"}
+              </Button>
+              <pre
+                tabIndex={0}
+                aria-label={`${name} integration code`}
+                className="max-h-96 overflow-auto rounded-md bg-muted p-4 text-xs"
+              >
+                <code>{snippet}</code>
               </pre>
             </TabsContent>
           ))}
         </Tabs>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
-  )
+  );
 }

@@ -284,24 +284,28 @@ export default function FormDetails() {
         )}
       </div>
 
+      {form.submission_mode === 'legacy' && <div role="status" className="rounded-md border border-amber-500 p-4 text-sm"><strong>Legacy security. Upgrade recommended.</strong> This form still accepts anonymous submissions without the new protections. <Link className="underline" to={`/forms/${id}/settings`}>Review security settings</Link> to plan its permanent upgrade.</div>}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Form Endpoint</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2">
-            <code className="flex-1 bg-muted px-4 py-2 rounded-md text-sm">
+            <code className="min-w-0 flex-1 break-all bg-muted px-4 py-2 rounded-md text-sm">
               {API_BASE_URL}/f/{form.endpoint}
             </code>
             <Button
               variant="outline"
               size="icon"
+              aria-label="Copy endpoint"
               onClick={handleCopyEndpoint}
             >
               <Copy className="h-4 w-4" />
             </Button>
+            {form.hosted_enabled && ['public', 'legacy'].includes(form.submission_mode) && <>
             <Button variant="outline" size="icon" asChild>
               <a
+                aria-label="Open hosted form"
                 href={`${API_BASE_URL}/f/${form.endpoint}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -309,9 +313,9 @@ export default function FormDetails() {
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
-            <Button variant="outline" size="icon" onClick={() => setShowQr((v) => !v)} title="QR code">
+            <Button variant="outline" size="icon" onClick={() => setShowQr((v) => !v)} aria-label="Show hosted form QR code">
               <QrCode className="h-4 w-4" />
-            </Button>
+            </Button></>}
           </div>
           {copied && (
             <p className="text-sm text-green-600 mt-2">Copied to clipboard!</p>
@@ -476,7 +480,7 @@ export default function FormDetails() {
         )}
 
         <TabsContent value="integration">
-          <CodeSnippet endpoint={form.endpoint} />
+          <CodeSnippet form={form} />
         </TabsContent>
       </Tabs>
     </div>

@@ -123,6 +123,7 @@ function SubmissionRow({ submission, onArchive, onRestore, onDeletePermanent, is
           </div>
         </div>
 
+        {submission.notification_status === 'suppressed_quota' && <p className="mt-3 text-sm text-muted-foreground">Saved without notifications: the daily notification limit was reached.</p>}
         {expanded && (
           <div className="mt-4 pt-4 border-t space-y-3">
             {fields.map(([key, value]) => (

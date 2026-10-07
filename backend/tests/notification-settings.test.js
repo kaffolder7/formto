@@ -2,14 +2,17 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 
-// Run against a disposable database initialized with migrations/001_init.sql.
+// Run against a disposable PostgreSQL database.
 test('notification settings persist as objects and preserve masked passwords', {
   skip: !process.env.TEST_DATABASE_URL,
 }, async (t) => {
+  assert.match(new URL(process.env.TEST_DATABASE_URL).pathname, /test/);
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
   process.env.JWT_SECRET = 'notification-regression-test-only';
   const { default: Fastify } = await import('fastify');
   const { default: sql } = await import('../utils/db.js');
+  const { migrate } = await import('../utils/migrations.js');
+  await migrate();
   const { default: authRoutes } = await import('../routes/auth.js');
   const { getTransportForUser, getFromForUser } = await import('../utils/mailer.js');
   const app = Fastify();

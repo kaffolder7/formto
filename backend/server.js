@@ -16,19 +16,22 @@ import publicRoutes     from './routes/public.js';
 import webhookRoutes    from './routes/webhooks.js';
 
 import sql from './utils/db.js';
+import { migrate } from './utils/migrations.js';
+import { encryptionKey } from './utils/submissionSecurity.js';
+import { trustedProxySetting } from './utils/clientIp.js';
 
 dotenv.config();
 
 const fastify = Fastify({
   logger: {
     level: process.env.LOG_LEVEL || 'info',
+    serializers: { req: request => ({ method: request.method, url: request.url?.split('?')[0],
+      remoteAddress: request.remoteAddress }) },
     ...(process.env.NODE_ENV !== 'production' && {
       transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' } }
     })
   },
-  trustProxy: process.env.NODE_ENV === 'production'
-    ? ['127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
-    : false,
+  trustProxy: trustedProxySetting(),
   bodyLimit: 524288,     // 512KB
   requestTimeout: 30000,
   connectionTimeout: 10000
@@ -48,10 +51,7 @@ fastify.addHook('onRequest', async (request, reply) => {
   const url    = request.url;
 
   if (url.startsWith('/f/')) {
-    reply.header('Access-Control-Allow-Origin', origin || '*');
-    reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    reply.header('Access-Control-Allow-Headers', 'Content-Type, Accept');
-    if (request.method === 'OPTIONS') { reply.status(204).send(); return; }
+    // Public routes enforce each form's origin policy, including preflight.
     return;
   }
 
@@ -108,7 +108,7 @@ fastify.addHook('onResponse', async (request, reply) => {
   if (request.url === '/health') return;
   const userId = request.user?.userId || 'anon';
   const ip     = getRequestIp(request);
-  console.log(`[${new Date().toISOString()}] ${ip} ${request.method} ${request.url} ${reply.statusCode} ${reply.elapsedTime?.toFixed(0) || 0}ms user:${userId}`);
+  console.log(`[${new Date().toISOString()}] ${ip} ${request.method} ${request.url.split('?')[0]} ${reply.statusCode} ${reply.elapsedTime?.toFixed(0) || 0}ms user:${userId}`);
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -146,6 +146,10 @@ fastify.get('/health', async (request, reply) => {
 // ─── Error handlers ───────────────────────────────────────────────────────────
 
 fastify.setErrorHandler((error, request, reply) => {
+  if (request.url.startsWith('/f/')) {
+    request.log.warn({ category: 'invalid_request' }, 'Submission rejected');
+    return reply.status(error.statusCode || 500).send({ error: 'invalid_request', message: 'Check the request format and size, then try again.' });
+  }
   fastify.log.error(error);
   const isDev = process.env.NODE_ENV !== 'production';
   reply.status(error.statusCode || 500).send({
@@ -174,6 +178,14 @@ const start = async () => {
   const port = Number(process.env.PORT) || 3001;
   const host = process.env.HOST || '0.0.0.0';
 
+  encryptionKey();
+  await migrate();
+  const cleanup = setInterval(() => {
+    sql`DELETE FROM submission_rate_limits WHERE window_start < NOW() - INTERVAL '1 day'`
+      .catch(() => fastify.log.warn('Rate-limit cleanup failed'));
+  }, 300000);
+  cleanup.unref();
+  fastify.addHook('onClose', async () => clearInterval(cleanup));
   await fastify.listen({ port, host });
 
   const INSECURE_SECRETS = new Set([

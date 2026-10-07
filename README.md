@@ -225,3 +225,19 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 ⭐ Star this repo if you find it useful!
 
 </div>
+
+## Protected submissions
+
+New forms require explicit security setup before activation. Public website forms
+require allowed origins and server-verified Cloudflare Turnstile. Private server
+integrations use revocable, form-scoped bearer keys. Both enforce field schemas
+and persistent submission/notification quotas. Existing forms retain their live integrations in a clearly labeled legacy mode.
+Owners explicitly opt into a permanent security upgrade; new forms cannot use
+legacy mode. Saving that upgrade pauses the form until setup and activation.
+
+Set a separate random `SETTINGS_ENCRYPTION_KEY` and your canonical `PUBLIC_ORIGIN`
+in `formto.env` for standalone Compose. Keep the encryption key with your backup.
+The backend applies database upgrades before it starts accepting traffic.
+
+See [security configuration and rollout](COOLIFY.md#submission-security-upgrade)
+for Turnstile setup, integration modes, proxy trust, quotas, and test commands.
