@@ -98,6 +98,12 @@ backup when a full rollback is required; do not drop new columns from a live DB.
 
 ### Public forms
 
+The form-specific Turnstile action is the form UUID with its hyphens removed
+(32 characters). Older snippets used a `form_` prefix, exceeding Cloudflare's
+32-character action limit. After deploying this correction, regenerate existing
+public integration snippets or remove that prefix in your website code. Hosted
+forms update automatically. No database migration or key rotation is required.
+
 1. In Cloudflare, create a Turnstile widget and register the hostnames where the
    form will appear. Cloudflare hostname registration and FormTo's allowed-origin
    list are separate controls.

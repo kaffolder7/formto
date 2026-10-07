@@ -116,7 +116,8 @@ describe("integration examples", () => {
     for (const source of Object.values(snippets)) {
       expect(source).toContain("_formto_honeypot");
       expect(source).toContain("site-key");
-      expect(source).toContain("form_1234");
+      expect(source).toContain("1234");
+      expect(source).not.toContain("form_1234");
       expect(source).not.toContain("Authorization");
     }
     expect(snippets.React).toContain("window.turnstile.render");

@@ -89,7 +89,8 @@ export function validCredential(header, hash) {
   const expected = Buffer.from(hash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
-export const turnstileAction = (form) => `form_${form.id.replaceAll("-", "")}`;
+// Cloudflare permits at most 32 action characters. The full UUID fits without hyphens.
+export const turnstileAction = (form) => form.id.replaceAll("-", "");
 
 export function normalizeOrigin(value) {
   if (
