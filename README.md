@@ -111,6 +111,12 @@ On a VPS with IP only? Edit `Caddyfile`, replace `{$DOMAIN}` with `:80`, leave `
 
 ## Self-hosting
 
+### Coolify
+
+For Coolify, use [`docker-compose.coolify.yml`](./docker-compose.coolify.yml) as
+the Compose file in a Git-based application. It uses Coolify-generated secrets
+and lets Coolify handle HTTPS. See [the Coolify deployment guide](./COOLIFY.md).
+
 ### Architecture
 
 ```
