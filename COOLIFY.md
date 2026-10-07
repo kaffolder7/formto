@@ -20,7 +20,9 @@ Use this Compose file **on its own**, not as an override of `docker-compose.yml`
 No `formto.env` file is needed. Coolify terminates TLS and forwards HTTP to Caddy,
 which routes `/api/*`, `/f/*`, and `/health` to the backend and other paths to the
 frontend. There are no published host ports, fixed container names, or external
-networks. PostgreSQL is accessible only over Docker networking.
+networks. PostgreSQL is accessible only over Docker networking. Small Dockerfiles
+package Caddy's config and PostgreSQL's initialization SQL into their images, so
+no repository bind mounts or "Preserve repository" option are needed.
 
 ## Generated variables
 
@@ -46,8 +48,8 @@ The `postgres_data` named volume holds all accounts, forms, and submissions.
 Back it up with `pg_dump` and test restoration before upgrades. Never delete the
 volume to fix a deployment failure.
 
-The SQL files in `backend/migrations` initialize a **fresh** database through
-PostgreSQL's `docker-entrypoint-initdb.d`. They do not automatically run against
+The SQL files in `backend/migrations` are copied into the PostgreSQL image and
+initialize a **fresh** database through `docker-entrypoint-initdb.d`. They do not automatically run against
 an existing volume on each deploy. Review future upstream schema changes and
 apply any required migrations deliberately after taking a backup.
 

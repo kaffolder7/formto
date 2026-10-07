@@ -2,7 +2,9 @@
 # Do not merge with docker-compose.yml, which publishes host ports for Caddy.
 services:
   postgres:
-    image: postgres:16.4-alpine
+    build:
+      context: .
+      dockerfile: docker/coolify/postgres.Dockerfile
     restart: unless-stopped
     environment:
       POSTGRES_DB: formto
@@ -10,7 +12,6 @@ services:
       POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U formto -d formto"]
       interval: 5s
@@ -63,14 +64,14 @@ services:
       start_period: 10s
 
   caddy:
-    image: caddy:2.8-alpine
+    build:
+      context: .
+      dockerfile: docker/coolify/caddy.Dockerfile
     restart: unless-stopped
     environment:
       - SERVICE_URL_CADDY
     expose:
       - "80"
-    volumes:
-      - ./Caddyfile.coolify:/etc/caddy/Caddyfile:ro
     depends_on:
       frontend:
         condition: service_healthy
