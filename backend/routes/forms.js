@@ -13,6 +13,9 @@ import {
 import { emailHelpers, replaceVariables, sanitizeTemplate, generateDefaultEmailTemplate } from '../utils/mailer.js';
 import validator from 'validator';
 
+import { SECURITY_COLUMNS, securityUpdates } from '../utils/formSecuritySettings.js';
+import { publicForm, newCredential, readiness } from '../utils/submissionSecurity.js';
+
 const INTERNAL_ERROR_MESSAGE = 'Please try again later.';
 
 const SAFE_FORM_COLS = [
@@ -22,7 +25,7 @@ const SAFE_FORM_COLS = [
   'email_config', 'email_template_enabled', 'email_template_subject', 'email_template_body',
   'webhook_url', 'slack_webhook_url', 'discord_webhook_url',
   'notify_email', 'notify_telegram', 'notify_slack',
-  'blocklist', 'close_after_submissions', 'close_at'
+  'blocklist', 'close_after_submissions', 'close_at', ...SECURITY_COLUMNS
 ].join(', ');
 
 const ALLOWED_UPDATE_FIELDS = new Set([
@@ -70,7 +73,7 @@ export default async function formRoutes(fastify) {
     try {
       const forms = await sql`
         SELECT id, user_id, name, endpoint, description, tags, active,
-               created_at, submission_count, logo_url
+               created_at, submission_count, logo_url, submission_mode, hosted_enabled, security_configured
         FROM forms
         WHERE user_id = ${request.user.userId}
         ORDER BY created_at DESC
@@ -90,7 +93,9 @@ export default async function formRoutes(fastify) {
         [request.params.formId, request.user.userId]
       );
       if (!form) return reply.status(404).send({ error: 'Form not found' });
-      return { form };
+      const [usage] = await sql`SELECT submissions, notifications FROM form_daily_usage
+        WHERE form_id = ${form.id} AND day = (NOW() AT TIME ZONE 'UTC')::date`;
+      return { form: { ...publicForm(form), usage_today: usage || { submissions: 0, notifications: 0 } } };
     } catch (err) {
       console.error('Error fetching form:', err);
       return reply.status(500).send({ error: 'Failed to fetch form', message: INTERNAL_ERROR_MESSAGE });
@@ -128,7 +133,7 @@ export default async function formRoutes(fastify) {
         name, endpoint, description,
         notification_email, redirect_url, email_config,
         webhook_url, slack_webhook_url, discord_webhook_url,
-        active = true
+        active = false
       } = request.body || {};
 
       if (!name || !endpoint) {
@@ -169,26 +174,22 @@ export default async function formRoutes(fastify) {
       const [existing] = await sql`SELECT id FROM forms WHERE endpoint = ${normalizedEndpoint} LIMIT 1`;
       if (existing) return reply.status(409).send({ error: 'Endpoint already in use' });
 
-      const [form] = await sql.unsafe(
-        `INSERT INTO forms (user_id, name, endpoint, description, notification_email, redirect_url, email_config, webhook_url, slack_webhook_url, discord_webhook_url, active, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
-         RETURNING ${SAFE_FORM_COLS}`,
-        [
-          request.user.userId,
-          name,
-          normalizedEndpoint,
-          description || null,
-          emailSettings.normalized.notification_email || null,
-          redirect_url || null,
-          emailSettings.normalized.email_config ? JSON.stringify(emailSettings.normalized.email_config) : null,
-          webhook_url || null,
-          slack_webhook_url || null,
-          discord_webhook_url || null,
-          active
-        ]
-      );
+      let security;
+      try { security = securityUpdates(request.body || {}); }
+      catch (error) { return reply.status(400).send({ error: 'Invalid security settings', message: error.message }); }
+      const values = {
+        user_id: request.user.userId, name, endpoint: normalizedEndpoint,
+        description: description || null,
+        notification_email: emailSettings.normalized.notification_email || null,
+        redirect_url: redirect_url || null,
+        email_config: emailSettings.normalized.email_config ? sql.json(emailSettings.normalized.email_config) : null,
+        webhook_url: webhook_url || null, slack_webhook_url: slack_webhook_url || null,
+        discord_webhook_url: discord_webhook_url || null, active: !!active, ...security,
+      };
+      for (const key of ['fields', 'allowed_origins']) values[key] = sql.json(values[key]);
+      const [form] = await sql`INSERT INTO forms ${sql(values)} RETURNING ${sql.unsafe(SAFE_FORM_COLS)}`;
 
-      return reply.status(201).send({ form });
+      return reply.status(201).send({ form: publicForm(form) });
     } catch (err) {
       console.error('Error creating form:', err);
       return reply.status(500).send({ error: 'Failed to create form', message: INTERNAL_ERROR_MESSAGE });
@@ -201,8 +202,11 @@ export default async function formRoutes(fastify) {
       const { formId } = request.params;
       const updates = pickAllowed(request.body || {});
 
-      const [existing] = await sql`SELECT id FROM forms WHERE id = ${formId} AND user_id = ${request.user.userId}`;
+      const [existing] = await sql`SELECT * FROM forms WHERE id = ${formId} AND user_id = ${request.user.userId}`;
       if (!existing) return reply.status(404).send({ error: 'Form not found' });
+
+      try { Object.assign(updates, securityUpdates(request.body || {}, existing)); }
+      catch (error) { return reply.status(400).send({ error: 'Invalid security settings', message: error.message }); }
 
       if (Object.keys(updates).length === 0) {
         return reply.status(400).send({ error: 'No valid fields to update' });
@@ -229,28 +233,26 @@ export default async function formRoutes(fastify) {
         if (!v.valid) return reply.status(400).send({ error: `Invalid ${field}`, message: v.error });
       }
 
-      if ('fields' in updates) {
-        const fv = validateHostedFields(updates.fields);
-        if (!fv.valid) return reply.status(400).send({ error: 'Invalid form fields', message: fv.error });
-        if (fv.sanitizedFields !== undefined) updates.fields = fv.sanitizedFields;
-      }
-
       const tmplVal = validateEmailTemplate(updates);
       if (!tmplVal.valid) return reply.status(400).send({ error: 'Invalid email template', message: tmplVal.error });
 
       updates.updated_at = new Date();
+      updates.security_revision = existing.security_revision + 1;
+      for (const key of ['allowed_origins', 'fields', 'tags', 'blocklist', 'notification_emails', 'email_config']) {
+        if (updates[key] !== undefined && updates[key] !== null) updates[key] = sql.json(updates[key]);
+      }
 
       const keys = Object.keys(updates);
       const setClauses = keys.map((k, i) => `${k} = $${i + 3}`).join(', ');
       const values = [formId, request.user.userId, ...Object.values(updates)];
 
       const [form] = await sql.unsafe(
-        `UPDATE forms SET ${setClauses} WHERE id = $1 AND user_id = $2 RETURNING ${SAFE_FORM_COLS}`,
+        `UPDATE forms SET ${setClauses} WHERE id = $1 AND user_id = $2 AND security_revision = ${existing.security_revision} RETURNING ${SAFE_FORM_COLS}`,
         values
       );
 
-      if (!form) return reply.status(404).send({ error: 'Form not found' });
-      return { form };
+      if (!form) return reply.status(409).send({ error: 'Settings changed', message: 'Reload settings and try again' });
+      return { form: publicForm(form) };
     } catch (err) {
       console.error('Error updating form:', err);
       return reply.status(500).send({ error: 'Failed to update form', message: INTERNAL_ERROR_MESSAGE });
@@ -274,17 +276,38 @@ export default async function formRoutes(fastify) {
   fastify.patch('/:formId/toggle', { preHandler: fastify.auth }, async (request, reply) => {
     try {
       const { formId } = request.params;
-      const [form] = await sql`
-        UPDATE forms SET active = NOT active, updated_at = NOW()
-        WHERE id = ${formId} AND user_id = ${request.user.userId}
-        RETURNING id, active
-      `;
-      if (!form) return reply.status(404).send({ error: 'Form not found' });
+      const [existing] = await sql`SELECT * FROM forms WHERE id = ${formId} AND user_id = ${request.user.userId}`;
+      if (!existing) return reply.status(404).send({ error: 'Form not found' });
+      const issue = readiness(existing);
+      if (!existing.active && issue) return reply.status(400).send({ error: 'Setup required', message: issue });
+      const [form] = await sql`UPDATE forms SET active = ${!existing.active}, security_revision = security_revision + 1,
+        updated_at = NOW() WHERE id = ${formId} AND user_id = ${request.user.userId}
+        AND security_revision = ${existing.security_revision} RETURNING id, active`;
+      if (!form) return reply.status(409).send({ error: 'Settings changed. Reload and try again.' });
       return { form };
     } catch (err) {
       console.error('Error toggling form:', err);
       return reply.status(500).send({ error: 'Failed to toggle form', message: INTERNAL_ERROR_MESSAGE });
     }
+  });
+
+  // Owner-only, write-once credentials; never reuse account authentication tokens.
+  fastify.post('/:formId/submission-key', { preHandler: [fastify.auth, fastify.rateLimitSensitive] }, async (request, reply) => {
+    const key = newCredential();
+    const [form] = await sql`UPDATE forms SET submission_key_hash = ${key.hash}, submission_key_prefix = ${key.prefix},
+      submission_key_created_at = NOW(), security_revision = security_revision + 1
+      WHERE id = ${request.params.formId} AND user_id = ${request.user.userId} AND submission_mode = 'private'
+      RETURNING id, submission_key_prefix, submission_key_created_at`;
+    if (!form) return reply.status(404).send({ error: 'Private form not found' });
+    reply.header('Cache-Control', 'no-store');
+    return reply.status(201).send({ token: key.token, ...form });
+  });
+  fastify.delete('/:formId/submission-key', { preHandler: [fastify.auth, fastify.rateLimitSensitive] }, async (request, reply) => {
+    const [form] = await sql`UPDATE forms SET submission_key_hash = NULL, submission_key_prefix = NULL,
+      submission_key_created_at = NULL, active = false, security_revision = security_revision + 1
+      WHERE id = ${request.params.formId} AND user_id = ${request.user.userId} AND submission_mode = 'private' RETURNING id`;
+    if (!form) return reply.status(404).send({ error: 'Form not found' });
+    return { success: true };
   });
 
   // POST /api/forms/:formId/test-email

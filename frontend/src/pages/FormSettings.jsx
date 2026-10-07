@@ -11,6 +11,8 @@ import { toast } from "@/hooks/use-toast"
 import { formsApi, webhooksApi } from "@/lib/api"
 import { isValidUrl } from "@/lib/utils"
 
+import FormSecuritySettings from '@/components/FormSecuritySettings'
+
 export default function FormSettings() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -61,6 +63,13 @@ export default function FormSettings() {
 
         setForm(formData)
         setFormData({
+          submission_mode: formData.submission_mode || 'public',
+          allowed_origins: formData.allowed_origins || [],
+          hosted_enabled: formData.hosted_enabled || false,
+          turnstile_site_key: formData.turnstile_site_key || '',
+          turnstile_secret: '', fields: formData.fields || [],
+          daily_submission_limit: formData.daily_submission_limit ?? 500,
+          daily_notification_limit: formData.daily_notification_limit ?? 100,
           name: formData.name || "",
           description: formData.description || "",
           active: formData.active !== false,
@@ -175,6 +184,17 @@ export default function FormSettings() {
       }
 
       const updateData = {
+        ...(formData.submission_mode === 'legacy' ? {} : {
+        ...(formData.upgrade_security ? { upgrade_security: true } : {}),
+        submission_mode: formData.submission_mode,
+        allowed_origins: formData.allowed_origins.map(v => v.trim()).filter(Boolean),
+        hosted_enabled: formData.hosted_enabled,
+        turnstile_site_key: formData.turnstile_site_key.trim(),
+        ...(formData.turnstile_secret.trim() ? { turnstile_secret: formData.turnstile_secret.trim() } : {}),
+        fields: formData.fields.map(f => ({ ...f, ...(f.options ? { options: f.options.filter(o => typeof o !== 'string' || o.trim()) } : {}) })),
+        daily_submission_limit: Number(formData.daily_submission_limit),
+        daily_notification_limit: Number(formData.daily_notification_limit),
+        }),
         name: formData.name.trim(),
         description: formData.description.trim() || null,
         active: formData.active,
@@ -200,7 +220,7 @@ export default function FormSettings() {
       // Navigate back to form details
       navigate(`/forms/${id}`)
     } catch (err) {
-      console.error("Failed to update form:", err)
+      console.error("Failed to update form settings")
       setError(err.response?.data?.message || err.message || "Failed to update form settings")
       toast({
         title: "Error",
@@ -240,7 +260,7 @@ export default function FormSettings() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link to={`/forms/${id}`}>
+          <Link to={`/forms/${id}`} aria-label="Back to form">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -253,6 +273,8 @@ export default function FormSettings() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        <FormSecuritySettings form={form} value={formData} onChange={setFormData} disabled={saving}
+          onKeyChange={changes => { setForm(prev => ({ ...prev, ...changes })); if (changes.active === false) setFormData(prev => ({ ...prev, active: false })) }} />
         <Card>
           <CardHeader>
             <CardTitle>Basic Information</CardTitle>
@@ -297,6 +319,7 @@ export default function FormSettings() {
               </div>
               <Switch
                 id="active"
+                disabled={saving || !!formData.upgrade_security}
                 checked={formData.active}
                 onCheckedChange={handleSwitchChange}
               />
@@ -395,6 +418,7 @@ export default function FormSettings() {
                 </div>
               </div>
               <Switch
+                aria-label="Email notifications"
                 checked={!!formData.notify_email}
                 onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, notify_email: checked }))}
                 disabled={saving}
@@ -412,6 +436,7 @@ export default function FormSettings() {
                 </div>
               </div>
               <Switch
+                aria-label="Telegram notifications"
                 checked={!!formData.notify_telegram}
                 onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, notify_telegram: checked }))}
                 disabled={saving}
@@ -429,6 +454,7 @@ export default function FormSettings() {
                 </div>
               </div>
               <Switch
+                aria-label="Slack notifications"
                 checked={!!formData.notify_slack}
                 onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, notify_slack: checked }))}
                 disabled={saving}
