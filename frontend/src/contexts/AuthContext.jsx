@@ -16,9 +16,12 @@ export function AuthProvider({ children }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(data.user);
-    } catch {
-      localStorage.removeItem(TOKEN_KEY);
-      setUser(null);
+    } catch (error) {
+      // Only an authentication rejection invalidates the established session.
+      if (error?.response?.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        setUser(null);
+      }
     }
   }, []);
 
